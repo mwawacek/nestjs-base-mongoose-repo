@@ -4,7 +4,7 @@ import {
   QueryOptions,
   UpdateQuery,
   SortOrder,
-  PopulateOptions,
+  PopulateOptions, Require_id, FlattenMaps,
 } from 'mongoose';
 
 // ─── Lean Document Type ─────────────────────────────────────────────────────
@@ -12,11 +12,7 @@ import {
  * Represents a lean (plain JS object) version of a Mongoose document.
  * Strips all Mongoose instance methods and keeps only the data shape.
  */
-export type LeanDoc<T> = T & {
-  _id: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-};
+export type LeanDoc<T> = Require_id<FlattenMaps<T>>;
 
 // ─── Pagination ─────────────────────────────────────────────────────────────
 export interface PaginationOptions {
