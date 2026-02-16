@@ -6,7 +6,6 @@ import {
   QueryOptions,
   ClientSession,
   AggregateOptions,
-  SaveOptions,
   PipelineStage,
 } from 'mongoose';
 import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
@@ -77,21 +76,20 @@ export abstract class BaseRepository<T> {
   /** Create and return a full Mongoose document (triggers save hooks). */
   async create(
     data: Partial<T>,
-    options?: SaveOptions,
+    options?: { session?: ClientSession },
   ): Promise<HydratedDocument<T>> {
     try {
-      const doc = new this.model(data);
-      const saved = await doc.save(options);
-      return saved as HydratedDocument<T>;
+      const [doc] = await this.model.create([data], options);
+      return doc as HydratedDocument<T>;
     } catch (error) {
       this.handleDuplicateKeyError(error);
     }
   }
 
-  /** Create and return a lean plain object. */
-  async createLean(
+  /** Create and return a plain object (uses `.toObject()`). */
+  async createPlain(
     data: Partial<T>,
-    options?: SaveOptions,
+    options?: { session?: ClientSession },
   ): Promise<LeanDoc<T>> {
     const doc = await this.create(data, options);
     return doc.toObject<LeanDoc<T>>();
