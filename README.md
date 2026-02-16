@@ -136,7 +136,7 @@ export class UserModule {}
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `create(data, options?)` | `HydratedDocument<T>` | Create with save hooks |
-| `createLean(data, options?)` | `LeanDoc<T>` | Create and return plain object |
+| `createPlain(data, options?)` | `LeanDoc<T>` | Create and return plain object |
 | `createMany(data, options?)` | `HydratedDocument<T>[]` | Bulk insert |
 
 ### Read — Documents
@@ -235,7 +235,7 @@ export class UserRepository extends BaseRepository<User> {
 | Need `.save()` with hooks | Document | Triggers pre/post middleware |
 | Need virtuals/methods | Document | Lean strips instance methods |
 | Pagination / lists | `paginate()` | Always lean (read-only) |
-| Write-then-read | `createLean()` | One operation, plain result |
+| Write-then-read | `createPlain()` | One operation, plain result |
 
 ## License
 

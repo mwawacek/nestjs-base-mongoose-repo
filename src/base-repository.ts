@@ -88,8 +88,8 @@ export abstract class BaseRepository<T> {
     }
   }
 
-  /** Create and return a lean plain object. */
-  async createLean(
+  /** Create and return a plain object (uses `.toObject()`). */
+  async createPlain(
     data: Partial<T>,
     options?: SaveOptions,
   ): Promise<LeanDoc<T>> {
