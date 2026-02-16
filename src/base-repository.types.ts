@@ -4,7 +4,9 @@ import {
   QueryOptions,
   UpdateQuery,
   SortOrder,
-  PopulateOptions, Require_id, FlattenMaps,
+  PopulateOptions,
+  Require_id,
+  FlattenMaps,
 } from 'mongoose';
 
 // ─── Lean Document Type ─────────────────────────────────────────────────────
