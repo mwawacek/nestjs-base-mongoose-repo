@@ -1,6 +1,6 @@
 {
   "name": "nestjs-base-mongoose-repo",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Type-safe, generic BaseRepository for NestJS + Mongoose with full document and lean query support",
   "license": "MIT",
   "main": "dist/index.js",

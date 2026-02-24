@@ -1,4 +1,4 @@
-import {
+import mongoose, {
   Model,
   HydratedDocument,
   FilterQuery,
@@ -292,7 +292,7 @@ export abstract class BaseRepository<T> {
     options?: QueryOptions<T>,
   ): Promise<LeanDoc<T> | null> {
     return this.model
-      .findByIdAndUpdate(id, update, { new: true, lean: true, ...options })
+      .findByIdAndUpdate(id, update, { new: true, ...options })
       .lean<LeanDoc<T>>()
       .exec();
   }
@@ -316,7 +316,6 @@ export abstract class BaseRepository<T> {
     return this.model
       .findOneAndUpdate(opts.filter, opts.update, {
         new: true,
-        lean: true,
         ...opts.options,
       })
       .lean<LeanDoc<T>>()
@@ -327,10 +326,10 @@ export abstract class BaseRepository<T> {
   async updateMany(
     filter: FilterQuery<T>,
     update: UpdateQuery<T>,
-    options?: QueryOptions<T>,
+    options?: mongoose.mongo.UpdateOptions,
   ): Promise<UpdateResult> {
     const result = await this.model
-      .updateMany(filter, update, options as never)
+      .updateMany(filter, update, options)
       .exec();
     return {
       acknowledged: result.acknowledged,
