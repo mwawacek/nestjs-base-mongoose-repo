@@ -7,7 +7,12 @@ import {
   PopulateOptions,
   Require_id,
   FlattenMaps,
+  Types,
 } from 'mongoose';
+
+// ─── Document ID ────────────────────────────────────────────────────────────
+/** Accepted types for `_id` lookups — plain string or Mongoose ObjectId. */
+export type DocumentId = string | Types.ObjectId;
 
 // ─── Lean Document Type ─────────────────────────────────────────────────────
 /**

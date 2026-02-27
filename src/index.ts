@@ -1,5 +1,6 @@
 export { BaseRepository } from './base-repository';
 export type {
+  DocumentId,
   LeanDoc,
   FindOptions,
   FindOneOptions,

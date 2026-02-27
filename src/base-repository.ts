@@ -10,6 +10,7 @@ import mongoose, {
 } from 'mongoose';
 import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import {
+  DocumentId,
   LeanDoc,
   FindOptions,
   FindOneOptions,
@@ -116,7 +117,7 @@ export abstract class BaseRepository<T> {
 
   /** Find a document by its `_id`. Returns `null` if not found. */
   async findById(
-    id: string,
+    id: DocumentId,
     options?: {
       projection?: Record<string, unknown>;
       populate?: FindOneOptions<T>['populate'];
@@ -129,7 +130,7 @@ export abstract class BaseRepository<T> {
 
   /** Find a document by `_id` or throw `NotFoundException`. */
   async findByIdOrFail(
-    id: string,
+    id: DocumentId,
     options?: {
       projection?: Record<string, unknown>;
       populate?: FindOneOptions<T>['populate'];
@@ -178,7 +179,7 @@ export abstract class BaseRepository<T> {
 
   /** Find by `_id` and return a lean plain object. */
   async findByIdLean(
-    id: string,
+    id: DocumentId,
     options?: {
       projection?: Record<string, unknown>;
       populate?: FindOneOptions<T>['populate'];
@@ -194,7 +195,7 @@ export abstract class BaseRepository<T> {
 
   /** Find by `_id` lean or throw `NotFoundException`. */
   async findByIdLeanOrFail(
-    id: string,
+    id: DocumentId,
     options?: {
       projection?: Record<string, unknown>;
       populate?: FindOneOptions<T>['populate'];
@@ -276,7 +277,7 @@ export abstract class BaseRepository<T> {
 
   /** Find by `_id`, update, and return the updated document. */
   async findByIdAndUpdate(
-    id: string,
+    id: DocumentId,
     update: UpdateQuery<T>,
     options?: QueryOptions<T>,
   ): Promise<HydratedDocument<T> | null> {
@@ -287,7 +288,7 @@ export abstract class BaseRepository<T> {
 
   /** Find by `_id`, update, and return a lean object. */
   async findByIdAndUpdateLean(
-    id: string,
+    id: DocumentId,
     update: UpdateQuery<T>,
     options?: QueryOptions<T>,
   ): Promise<LeanDoc<T> | null> {
@@ -384,7 +385,7 @@ export abstract class BaseRepository<T> {
 
   /** Delete a document by `_id`. Returns the deleted document or `null`. */
   async findByIdAndDelete(
-    id: string,
+    id: DocumentId,
   ): Promise<HydratedDocument<T> | null> {
     return this.model.findByIdAndDelete(id).exec();
   }
