@@ -1,4 +1,5 @@
-export { BaseRepository } from './base-repository';
+export { BaseMongoRepository } from './base-repository';
+export type { DuplicateKeyErrorOption } from './base-repository';
 export type {
   DocumentId,
   LeanDoc,

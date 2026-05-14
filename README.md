@@ -1,6 +1,6 @@
 # nestjs-base-mongoose-repo
 
-A **type-safe**, **generic** BaseRepository for **NestJS + Mongoose** with first-class support for both full Mongoose documents and lean (plain object) queries.
+A **type-safe**, **generic** BaseMongoRepository for **NestJS + Mongoose** with first-class support for both full Mongoose documents and lean (plain object) queries.
 
 ## Features
 
@@ -11,7 +11,8 @@ A **type-safe**, **generic** BaseRepository for **NestJS + Mongoose** with first
 - 🛡️ **OrFail variants** — throw `NotFoundException` automatically
 - 📊 **Typed aggregation** — `aggregate<R>()` with custom return types
 - 🔌 **Escape hatch** — `getModel()` for direct Mongoose access
-- 🚫 **Duplicate key handling** — auto-throws `ConflictException` (409) on unique constraint violations
+- 🚫 **Duplicate key handling** — auto-throws structured `ConflictException` (409) on unique constraint violations, with opt-in `systemCode` / `message` overrides per call
+- 🪝 **Bypass pre-hooks** — `bypassPreHooks` option on `find*` methods to skip Mongoose pre-find middleware (e.g. soft-delete filters)
 
 ## Installation
 
@@ -58,11 +59,11 @@ export const UserSchema = SchemaFactory.createForClass(User);
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { BaseRepository } from 'nestjs-base-mongoose-repo';
+import { BaseMongoRepository } from 'nestjs-base-mongoose-repo';
 import { User } from './user.schema';
 
 @Injectable()
-export class UserRepository extends BaseRepository<User> {
+export class UserRepository extends BaseMongoRepository<User> {
   constructor(@InjectModel(User.name) model: Model<User>) {
     super(model, 'User');
   }
@@ -183,7 +184,7 @@ export class UserModule {}
 |--------|---------|-------------|
 | `findByIdAndDelete(id)` | `HydratedDocument<T> \| null` | Delete by `_id` |
 | `findOneAndDelete(filter)` | `HydratedDocument<T> \| null` | Delete by filter |
-| `deleteMany(filter)` | `DeleteResult` | Delete many |
+| `deleteMany(filter, options?)` | `DeleteResult` | Delete many (supports `session`) |
 
 ### Aggregation, Count & Utilities
 
@@ -202,26 +203,43 @@ export class UserModule {}
 
 ### Duplicate Key (E11000)
 
-`create()` and `createMany()` automatically catch MongoDB duplicate key errors and throw a NestJS `ConflictException` (HTTP 409) with the offending field name:
+`create()`, `createMany()` and `bulkWrite()` automatically catch MongoDB duplicate key errors and throw a NestJS `ConflictException` (HTTP 409) with a structured payload:
 
 ```json
 {
   "statusCode": 409,
-  "message": "User with duplicate \"email\" already exists"
+  "message": {
+    "systemCode": "duplicateKeyError",
+    "message": "A resource with this email already exists"
+  }
 }
 ```
 
-You can override `handleDuplicateKeyError()` in your repository for custom messages:
+The duplicate field name is extracted from both `MongoServerError.keyPattern` (single inserts/updates) and `MongoBulkWriteError` messages (insertMany / bulkWrite).
+
+Pass a per-call `duplicateKeyError` option to override `systemCode` and/or `message`:
+
+```ts
+await this.users.create(data, {
+  duplicateKeyError: {
+    systemCode: 'userEmailAlreadyExists',
+    message: 'A user with this email already exists',
+  },
+});
+```
+
+If only `systemCode` is provided, the default field-based message is kept. Non-E11000 errors are rethrown untouched.
+
+You can still override `handleDuplicateKeyError()` in your repository for fully custom logic:
 
 ```ts
 @Injectable()
-export class UserRepository extends BaseRepository<User> {
+export class UserRepository extends BaseMongoRepository<User> {
   constructor(@InjectModel(User.name) model: Model<User>) {
     super(model, 'User');
   }
 
   protected handleDuplicateKeyError(error: unknown): never {
-    // Custom message for email duplicates
     super.handleDuplicateKeyError(error);
   }
 }

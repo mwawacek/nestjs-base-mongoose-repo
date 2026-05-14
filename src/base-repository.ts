@@ -10,7 +10,6 @@ import mongoose, {
 } from 'mongoose';
 import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import {
-  DocumentId,
   LeanDoc,
   FindOptions,
   FindOneOptions,
@@ -20,7 +19,19 @@ import {
   DeleteResult,
   UpdateResult,
   BulkWriteResult,
+  DocumentId,
 } from './base-repository.types';
+
+/**
+ * Opt-in override for how a repository maps MongoDB E11000 (duplicate-key)
+ * errors to a `ConflictException`. When supplied, `systemCode` replaces the
+ * default `'duplicateKeyError'`; `message` (if omitted) falls back to the
+ * generic field-based message.
+ */
+export interface DuplicateKeyErrorOption {
+  systemCode: string;
+  message?: string;
+}
 
 /**
  * Abstract, generic BaseRepository for Mongoose + NestJS.
@@ -33,14 +44,14 @@ import {
  * @example
  * ```ts
  * @Injectable()
- * export class UserRepository extends BaseRepository<User> {
+ * export class UserRepository extends BaseMongoRepository<User> {
  *   constructor(@InjectModel(User.name) model: Model<User>) {
  *     super(model, 'User');
  *   }
  * }
  * ```
  */
-export abstract class BaseRepository<T> {
+export abstract class BaseMongoRepository<T> {
   protected readonly logger: Logger;
 
   protected constructor(
@@ -55,19 +66,41 @@ export abstract class BaseRepository<T> {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /** Rethrows MongoDB duplicate-key errors (E11000) as NestJS ConflictException. */
-  protected handleDuplicateKeyError(error: unknown): never {
-    if (
-      error instanceof Error &&
-      'code' in error &&
-      (error as { code: number }).code === 11000
-    ) {
-      const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern;
-      const field = keyPattern ? Object.keys(keyPattern)[0] : 'unknown';
-      throw new ConflictException(
-        `${this.entityName} with duplicate "${field}" already exists`,
-      );
+  protected handleDuplicateKeyError(
+    error: unknown,
+    duplicateKeyError?: DuplicateKeyErrorOption,
+  ): never {
+    if (error instanceof Error && 'code' in error && (error as { code: number }).code === 11000) {
+      const field = this.extractDuplicateField(error);
+      this.logger.warn(`Duplicate ${field} in ${this.entityName}: ${error.message}`);
+
+      const defaultMessage = `A resource with this ${field} already exists`;
+
+      throw new ConflictException({
+        systemCode: duplicateKeyError?.systemCode ?? 'duplicateKeyError',
+        message: duplicateKeyError?.message ?? defaultMessage,
+      });
     }
     throw error;
+  }
+
+  /** Extracts the duplicate field name from a MongoDB E11000 error. */
+  private extractDuplicateField(error: Error): string {
+    // MongoServerError (save/create/updateOne) has keyPattern directly
+    const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern;
+    if (keyPattern) {
+      const keys = Object.keys(keyPattern);
+      return keys[keys.length - 1];
+    }
+
+    // MongoBulkWriteError (insertMany): parse from dup key in error message
+    const dupKeyMatch = error.message.match(/dup key: \{(.+)\}/)?.[1];
+    if (dupKeyMatch) {
+      const fields = [...dupKeyMatch.matchAll(/(\w+)\s*:/g)].map((m) => m[1]);
+      return fields[fields.length - 1] ?? 'unknown';
+    }
+
+    return 'unknown';
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -77,20 +110,20 @@ export abstract class BaseRepository<T> {
   /** Create and return a full Mongoose document (triggers save hooks). */
   async create(
     data: Partial<T>,
-    options?: { session?: ClientSession },
+    options?: { session?: ClientSession; duplicateKeyError?: DuplicateKeyErrorOption },
   ): Promise<HydratedDocument<T>> {
     try {
-      const [doc] = await this.model.create([data], options);
+      const [doc] = await this.model.create([data], { session: options?.session });
       return doc as HydratedDocument<T>;
     } catch (error) {
-      this.handleDuplicateKeyError(error);
+      this.handleDuplicateKeyError(error, options?.duplicateKeyError);
     }
   }
 
   /** Create and return a plain object (uses `.toObject()`). */
   async createPlain(
     data: Partial<T>,
-    options?: { session?: ClientSession },
+    options?: { session?: ClientSession; duplicateKeyError?: DuplicateKeyErrorOption },
   ): Promise<LeanDoc<T>> {
     const doc = await this.create(data, options);
     return doc.toObject<LeanDoc<T>>();
@@ -99,7 +132,7 @@ export abstract class BaseRepository<T> {
   /** Insert multiple documents in one operation. */
   async createMany(
     data: Partial<T>[],
-    options?: { session?: ClientSession },
+    options?: { session?: ClientSession; duplicateKeyError?: DuplicateKeyErrorOption },
   ): Promise<HydratedDocument<T>[]> {
     try {
       const docs = await this.model.insertMany(data, {
@@ -107,7 +140,7 @@ export abstract class BaseRepository<T> {
       });
       return docs as unknown as HydratedDocument<T>[];
     } catch (error) {
-      this.handleDuplicateKeyError(error);
+      this.handleDuplicateKeyError(error, options?.duplicateKeyError);
     }
   }
 
@@ -146,10 +179,9 @@ export abstract class BaseRepository<T> {
   }
 
   /** Find a single document matching the filter. */
-  async findOne(
-    opts: FindOneOptions<T>,
-  ): Promise<HydratedDocument<T> | null> {
+  async findOne(opts: FindOneOptions<T>): Promise<HydratedDocument<T> | null> {
     let query = this.model.findOne(opts.filter, opts.projection);
+    if (opts.bypassPreHooks) query = query.setOptions({ bypassPreHooks: true });
     if (opts.populate) query = query.populate(opts.populate);
     return query.exec();
   }
@@ -166,6 +198,7 @@ export abstract class BaseRepository<T> {
   /** Find multiple documents with optional sort, skip, limit, populate. */
   async find(opts: FindOptions<T> = {}): Promise<HydratedDocument<T>[]> {
     let query = this.model.find(opts.filter ?? {}, opts.projection);
+    if (opts.bypassPreHooks) query = query.setOptions({ bypassPreHooks: true });
     if (opts.sort) query = query.sort(opts.sort);
     if (opts.skip != null) query = query.skip(opts.skip);
     if (opts.limit != null) query = query.limit(opts.limit);
@@ -212,9 +245,8 @@ export abstract class BaseRepository<T> {
 
   /** Find one lean document matching the filter. */
   async findOneLean(opts: FindOneOptions<T>): Promise<LeanDoc<T> | null> {
-    let query = this.model
-      .findOne(opts.filter, opts.projection)
-      .lean<LeanDoc<T>>();
+    let query = this.model.findOne(opts.filter, opts.projection).lean<LeanDoc<T>>();
+    if (opts.bypassPreHooks) query = query.setOptions({ bypassPreHooks: true }) as typeof query;
     if (opts.populate) query = query.populate(opts.populate) as typeof query;
     return query.exec();
   }
@@ -230,9 +262,9 @@ export abstract class BaseRepository<T> {
 
   /** Find multiple lean documents. */
   async findLean(opts: FindOptions<T> = {}): Promise<LeanDoc<T>[]> {
-    let query = this.model
-      .find(opts.filter ?? {}, opts.projection)
-      .lean<LeanDoc<T>[]>();
+    let query = this.model.find(opts.filter ?? {}, opts.projection).lean<LeanDoc<T>[]>();
+    if (opts.bypassPreHooks) query = query.setOptions({ bypassPreHooks: true }) as typeof query;
+    if (opts.session) query = query.session(opts.session) as typeof query;
     if (opts.sort) query = query.sort(opts.sort) as typeof query;
     if (opts.skip != null) query = query.skip(opts.skip) as typeof query;
     if (opts.limit != null) query = query.limit(opts.limit) as typeof query;
@@ -398,8 +430,11 @@ export abstract class BaseRepository<T> {
   }
 
   /** Delete all documents matching the filter. */
-  async deleteMany(filter: FilterQuery<T>): Promise<DeleteResult> {
-    return this.model.deleteMany(filter).exec();
+  async deleteMany(
+    filter: FilterQuery<T>,
+    options?: { session?: ClientSession },
+  ): Promise<DeleteResult> {
+    return this.model.deleteMany(filter, options).exec();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -456,18 +491,22 @@ export abstract class BaseRepository<T> {
   /** Execute multiple write operations in a single command. */
   async bulkWrite(
     operations: Parameters<Model<T>['bulkWrite']>[0],
-    options?: { session?: ClientSession },
+    options?: { session?: ClientSession; duplicateKeyError?: DuplicateKeyErrorOption },
   ): Promise<BulkWriteResult> {
-    const result = await this.model.bulkWrite(operations, {
-      session: options?.session,
-    });
-    return {
-      insertedCount: result.insertedCount,
-      matchedCount: result.matchedCount,
-      modifiedCount: result.modifiedCount,
-      deletedCount: result.deletedCount,
-      upsertedCount: result.upsertedCount,
-    };
+    try {
+      const result = await this.model.bulkWrite(operations, {
+        session: options?.session,
+      });
+      return {
+        insertedCount: result.insertedCount,
+        matchedCount: result.matchedCount,
+        modifiedCount: result.modifiedCount,
+        deletedCount: result.deletedCount,
+        upsertedCount: result.upsertedCount,
+      };
+    } catch (error) {
+      this.handleDuplicateKeyError(error, options?.duplicateKeyError);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

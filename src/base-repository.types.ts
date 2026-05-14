@@ -1,4 +1,5 @@
 import {
+  ClientSession,
   FilterQuery,
   ProjectionType,
   QueryOptions,
@@ -10,7 +11,7 @@ import {
   Types,
 } from 'mongoose';
 
-// ─── Document ID ────────────────────────────────────────────────────────────
+// ─── Common Types ───────────────────────────────────────────────────────────
 /** Accepted types for `_id` lookups — plain string or Mongoose ObjectId. */
 export type DocumentId = string | Types.ObjectId;
 
@@ -47,12 +48,17 @@ export interface FindOptions<T> {
   skip?: number;
   limit?: number;
   populate?: PopulateOptions | PopulateOptions[];
+  /** Bypass Mongoose pre-find hooks (e.g. soft-delete filters). */
+  bypassPreHooks?: boolean;
+  session?: ClientSession;
 }
 
 export interface FindOneOptions<T> {
   filter: FilterQuery<T>;
   projection?: ProjectionType<T>;
   populate?: PopulateOptions | PopulateOptions[];
+  /** Bypass Mongoose pre-find hooks (e.g. soft-delete filters). */
+  bypassPreHooks?: boolean;
 }
 
 export interface UpdateOptions<T> {
