@@ -93,10 +93,12 @@ export abstract class BaseMongoRepository<T> {
       return keys[keys.length - 1];
     }
 
-    // MongoBulkWriteError (insertMany): parse from dup key in error message
+    // MongoBulkWriteError (insertMany): parse from dup key in error message.
+    // Anchor on segment start (^ or ,) so colons inside values (URLs, ISO
+    // dates, etc.) don't get picked up as field names.
     const dupKeyMatch = error.message.match(/dup key: \{(.+)\}/)?.[1];
     if (dupKeyMatch) {
-      const fields = [...dupKeyMatch.matchAll(/(\w+)\s*:/g)].map((m) => m[1]);
+      const fields = [...dupKeyMatch.matchAll(/(?:^|,)\s*(\w+)\s*:/g)].map((m) => m[1]);
       return fields[fields.length - 1] ?? 'unknown';
     }
 
